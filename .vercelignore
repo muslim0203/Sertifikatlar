@@ -1,0 +1,13 @@
+# Unnecessary for serverless deploy
+py/
+__pycache__/
+output/
+*.db
+.env
+.env.*
+!.env.example
+python-embed.zip
+python-installer.exe
+get-pip.py
+run_bot.bat
+*.bat

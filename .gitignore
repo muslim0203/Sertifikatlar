@@ -1,0 +1,40 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+py/
+
+# Loyiha generatsiyasi
+output/
+*.db
+certificates.db
+
+# Binaries & installers
+python-embed.zip
+python-installer.exe
+get-pip.py
+*.exe
+*.zip
+
+# Scripts (lokal ishga tushirish)
+run_bot.bat
+*.bat
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Vercel (lokal deploy log)
+.vercel
