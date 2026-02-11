@@ -32,6 +32,11 @@ async def cmd_start(message: types.Message):
         "I will detect whether it is a Journal or Conference article and send the matching certificate for each author."
     )
 
+@dp.message(Command("ping"))
+async def cmd_ping(message: types.Message):
+    """Tekshirish: bot javob beryaptimi."""
+    await message.reply("pong")
+
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
     await message.reply(

@@ -28,4 +28,9 @@ Javobda `{"ok":true}` bo‘lishi kerak.
 ## 4. Tekshirish
 
 - **/api/status** ni qayta oching — `webhook_url` endi `https://sertifikatlar.vercel.app/api/webhook` ko‘rinishi kerak.
-- Telegram’da botga **/start** yuboring — javob kelishi kerak.
+- Telegram’da botga **/start** yoki **/ping** yuboring — javob kelishi kerak (/ping → "pong").
+
+## 5. Yana ham javob bo‘lmasa
+
+- Vercel → **Sertifikatlar** → **Logs** (yoki **Runtime Logs**). Telegram’da /ping yuborganingizdan keyin "Webhook: received update" ko‘rinishi kerak. Ko‘rinmasa — Telegram yangilanishlarni boshqa URL ga yubormoqda (webhook noto‘g‘ri). Ko‘rinsa lekin xatolik bo‘lsa — xato matnini o‘qing.
+- Agar bot **"Xatolik: ..."** xabarini yuborsa — shu matnni Vercel Logs bilan solishtiring.
