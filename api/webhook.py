@@ -36,22 +36,24 @@ class handler(BaseHTTPRequestHandler):
         send_response(self, 200, "OK")
 
     def do_POST(self):
+        if not bot:
+            send_response(self, 503, "BOT_TOKEN not set. Vercel: Project Settings → Environment Variables.")
+            return
         try:
             content_length = int(self.headers.get("Content-Length", 0))
             raw = self.rfile.read(content_length) if content_length else b"{}"
             data = json.loads(raw.decode("utf-8"))
-        except Exception:
+            update = Update.model_validate(data)
+        except Exception as e:
+            print(f"Webhook parse error: {e}", file=sys.stderr)
             send_response(self, 400, "Bad request")
             return
 
-        init_db()
+        # Telegram 60s dan oshsa qayta urinadi — avval 200 qaytaramiz
+        send_response(self, 200, "OK")
 
         try:
-            update = Update.model_validate(data)
+            init_db()
             asyncio.run(dp.feed_webhook_update(bot, update))
         except Exception as e:
-            print(f"Webhook error: {e}", file=sys.stderr)
-            send_response(self, 500, "Internal error")
-            return
-
-        send_response(self, 200, "OK")
+            print(f"Webhook handler error: {e}", file=sys.stderr)

@@ -17,13 +17,11 @@ from certificate_generator import generate_certificate, generate_certificate_ics
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize Bot and Dispatcher
-if not BOT_TOKEN:
-    logger.error("BOT_TOKEN is not set in .env or config.py")
-    sys.exit(1)
-
-bot = Bot(token=BOT_TOKEN)
+# Initialize Bot and Dispatcher (Vercelda BOT_TOKEN env da bo'lishi kerak)
+bot = Bot(token=BOT_TOKEN) if BOT_TOKEN else None
 dp = Dispatcher()
+if not BOT_TOKEN:
+    logger.warning("BOT_TOKEN is not set. Vercel: Settings → Environment Variables da qo'shing.")
 
 # Handlers
 
