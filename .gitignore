@@ -28,6 +28,7 @@ get-pip.py
 # Scripts (lokal ishga tushirish)
 run_bot.bat
 *.bat
+!push_to_github.bat
 
 # IDE & OS
 .idea/
