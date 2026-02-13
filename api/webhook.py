@@ -17,9 +17,11 @@ os.chdir(ROOT)
 # Vercel muhitida /tmp ishlatamiz
 os.environ.setdefault("VERCEL", "1")
 
+from aiogram import Bot
 from aiogram.types import Update
+from config import BOT_TOKEN
 from db import init_db
-from main import bot, dp
+from main import dp
 
 
 def send_response(self, status: int, body: str = ""):
@@ -36,7 +38,7 @@ class handler(BaseHTTPRequestHandler):
         send_response(self, 200, "OK")
 
     def do_POST(self):
-        if not bot:
+        if not BOT_TOKEN:
             send_response(self, 503, "BOT_TOKEN not set. Vercel: Project Settings → Environment Variables.")
             return
         try:
@@ -55,9 +57,10 @@ class handler(BaseHTTPRequestHandler):
         # Telegram 60s dan oshsa ulanish uziladi — darhol 200 qaytaramiz, keyin qayta ishlaymiz
         send_response(self, 200, "OK")
 
-        # Har so'rovda yangi loop — "Event loop is closed" xatosini oldini olish (serverless reuse)
+        # Har so'rovda yangi loop VA yangi Bot — "Event loop is closed" (eski Bot yopilgan loop ga bog'langan)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        bot = Bot(token=BOT_TOKEN)
         try:
             init_db()
             loop.run_until_complete(dp.feed_webhook_update(bot, update))
