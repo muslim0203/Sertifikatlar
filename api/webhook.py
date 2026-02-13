@@ -57,19 +57,25 @@ class handler(BaseHTTPRequestHandler):
         # Telegram 60s dan oshsa ulanish uziladi — darhol 200 qaytaramiz, keyin qayta ishlaymiz
         send_response(self, 200, "OK")
 
-        # Har so'rovda yangi loop VA yangi Bot — "Event loop is closed" (eski Bot yopilgan loop ga bog'langan)
+        async def process_update():
+            # Bot loop ishlaganda yaratiladi — aiohttp session joriy loop bilan ochiladi
+            bot = Bot(token=BOT_TOKEN)
+            await dp.feed_webhook_update(bot, update)
+
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        bot = Bot(token=BOT_TOKEN)
         try:
             init_db()
-            loop.run_until_complete(dp.feed_webhook_update(bot, update))
+            loop.run_until_complete(process_update())
         except Exception as e:
             print(f"Webhook handler error: {e}", file=sys.stderr)
             try:
                 cid = update.message.chat.id if update.message else (update.callback_query.message.chat.id if update.callback_query and update.callback_query.message else None)
                 if cid is not None:
-                    loop.run_until_complete(bot.send_message(cid, f"Xatolik: {str(e)[:300]}"))
+                    async def send_err():
+                        bot = Bot(token=BOT_TOKEN)
+                        await bot.send_message(cid, f"Xatolik: {str(e)[:300]}")
+                    loop.run_until_complete(send_err())
             except Exception:
                 pass
         finally:
