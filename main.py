@@ -48,65 +48,74 @@ async def cmd_help(message: types.Message):
 
 @dp.message(F.text)
 async def process_url(message: types.Message):
-    url = message.text.strip()
-    
-    # 1. Validate URL
-    if not validate_url(url):
-        await message.reply("Invalid OJS link. Please send a valid article URL from mijournals.com/Human_Studies/")
+    url = (message.text or "").strip()
+    if not url:
         return
 
-    # 2. Extract Metadata
-    status_msg = await message.reply("Processing link... Please wait.")
-    
+    # Darhol javob — foydalanuvchi link yuborilganini ko'rsin
     try:
+        status_msg = await message.reply("Link qabul qilindi, qayta ishlanmoqda...")
+    except Exception:
+        status_msg = None
+
+    try:
+        # 1. Validate URL
+        if not validate_url(url):
+            await (status_msg.edit_text if status_msg else message.reply)(
+                "Invalid OJS link. Please send a valid article URL from mijournals.com/Human_Studies/"
+            )
+            return
+
+        # 2. Extract Metadata
+        if status_msg:
+            await status_msg.edit_text("Sahifa yuklanmoqda...")
         metadata = extract_metadata(url)
-    except Exception as e:
-        logger.error(f"Extraction error: {e}")
-        metadata = None
-        
-    if not metadata:
-        await status_msg.edit_text("Could not see article metadata. Please check the link.")
-        return
-        
-    authors = metadata.get('authors', [])
-    if not authors:
-        await status_msg.edit_text("No authors found on this article page.")
-        return
-        
-    title = metadata.get('title', 'Untitled')
-    date = metadata.get('date', '')
-    doi = metadata.get('doi')
-    is_conference = metadata.get('is_conference', False)
 
-    cert_type = "Conference (ICSSHR)" if is_conference else "Journal (Human Studies)"
-    await status_msg.edit_text(
-        f"Found: {title}\nAuthors: {', '.join(authors)}\nType: {cert_type}\nGenerating certificates..."
-    )
+        if not metadata:
+            await (status_msg.edit_text if status_msg else message.reply)(
+                "Could not see article metadata. Please check the link."
+            )
+            return
 
-    # 3. Generate Certificates — jurnal uchun 1-shablon, konferensiya uchun 2-shablon
-    generated_files = []
-    cert_prefix = "ICSSHR" if is_conference else "MIHS"
-    generate_fn = generate_certificate_icsshr if is_conference else generate_certificate
+        authors = metadata.get('authors', [])
+        if not authors:
+            await (status_msg.edit_text if status_msg else message.reply)(
+                "No authors found on this article page."
+            )
+            return
 
-    try:
+        title = metadata.get('title', 'Untitled')
+        date = metadata.get('date', '')
+        doi = metadata.get('doi')
+        is_conference = metadata.get('is_conference', False)
+        cert_type = "Conference (ICSSHR)" if is_conference else "Journal (Human Studies)"
+
+        await (status_msg.edit_text if status_msg else message.reply)(
+            f"Found: {title}\nAuthors: {', '.join(authors)}\nType: {cert_type}\nGenerating certificates..."
+        )
+
+        # 3. Generate Certificates
+        generated_files = []
+        cert_prefix = "ICSSHR" if is_conference else "MIHS"
+        generate_fn = generate_certificate_icsshr if is_conference else generate_certificate
+
         for author in authors:
             cert_id = get_next_certificate_id(prefix=cert_prefix)
             save_certificate(cert_id, author, title)
             pdf_path = generate_fn(author, title, date, cert_id, doi=doi)
             generated_files.append((author, pdf_path))
 
-        # 4. Send Files
         for author, pdf_path in generated_files:
             file_to_send = FSInputFile(pdf_path)
             await message.reply_document(file_to_send, caption=f"Certificate for {author} ({cert_type})")
-            
+
     except Exception as e:
-        logger.error(f"Generation error: {e}")
-        await message.reply("An error occurred while generating certificates.")
-        
-    # Cleanup? 
-    # User requirement: "Also save generated PDFs in a local folder: /output"
-    # So we keeping them. No cleanup needed.
+        logger.exception("process_url error")
+        err_msg = str(e)[:400]
+        try:
+            await message.reply(f"Xatolik: {err_msg}\n\nVercel Logs da batafsil ko'ring.")
+        except Exception:
+            pass
 
 async def main():
     # Initialize DB
