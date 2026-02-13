@@ -55,14 +55,19 @@ class handler(BaseHTTPRequestHandler):
         # Telegram 60s dan oshsa ulanish uziladi — darhol 200 qaytaramiz, keyin qayta ishlaymiz
         send_response(self, 200, "OK")
 
+        # Har so'rovda yangi loop — "Event loop is closed" xatosini oldini olish (serverless reuse)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         try:
             init_db()
-            asyncio.run(dp.feed_webhook_update(bot, update))
+            loop.run_until_complete(dp.feed_webhook_update(bot, update))
         except Exception as e:
             print(f"Webhook handler error: {e}", file=sys.stderr)
             try:
                 cid = update.message.chat.id if update.message else (update.callback_query.message.chat.id if update.callback_query and update.callback_query.message else None)
                 if cid is not None:
-                    asyncio.run(bot.send_message(cid, f"Xatolik: {str(e)[:300]}"))
+                    loop.run_until_complete(bot.send_message(cid, f"Xatolik: {str(e)[:300]}"))
             except Exception:
                 pass
+        finally:
+            loop.close()
