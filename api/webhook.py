@@ -49,28 +49,19 @@ class handler(BaseHTTPRequestHandler):
             send_response(self, 400, "Bad request")
             return
 
-        # Telegram 60s dan oshsa qayta urinadi — avval 200 qaytaramiz
-        send_response(self, 200, "OK")
-
         chat_id = (update.message and update.message.chat.id) or (update.callback_query and update.callback_query.message and update.callback_query.message.chat.id)
         print(f"Webhook: received update, chat_id={chat_id}", file=sys.stderr)
 
         try:
             init_db()
             asyncio.run(dp.feed_webhook_update(bot, update))
+            send_response(self, 200, "OK")
         except Exception as e:
             print(f"Webhook handler error: {e}", file=sys.stderr)
-            # Foydalanuvchiga xabar yuborish (hech narsa ko'rinmasin)
             try:
-                chat_id = None
-                if update.message:
-                    chat_id = update.message.chat.id
-                elif update.callback_query and update.callback_query.message:
-                    chat_id = update.callback_query.message.chat.id
-                if chat_id is not None:
-                    asyncio.run(bot.send_message(
-                        chat_id,
-                        f"Xatolik: {str(e)[:300]}\n\nVercel → Runtime Logs da batafsil ko'ring."
-                    ))
+                cid = update.message.chat.id if update.message else (update.callback_query.message.chat.id if update.callback_query and update.callback_query.message else None)
+                if cid is not None:
+                    asyncio.run(bot.send_message(cid, f"Xatolik: {str(e)[:300]}"))
             except Exception:
                 pass
+            send_response(self, 200, "OK")
