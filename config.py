@@ -24,6 +24,8 @@ TEMPLATE_FILENAME = "template_human_studies.png"
 TEMPLATE_ICSSHR = "template_human_studies2.png"
 # Virginia EduLab journal
 TEMPLATE_VEL = "template_vel.png"
+# Journal of Social and Theological Studies
+TEMPLATE_JSTS = "template_jsts.png"
 
 # =====================================================================
 # JURNALLAR RO'YXATI
@@ -47,6 +49,12 @@ JOURNALS = {
         "name": "Virginia EduLab",
         "prefix": "VEL",
         "generator": "vel",
+    },
+    "jsts": {
+        "path": "/jsts/article/view/",
+        "name": "Journal of Social and Theological Studies",
+        "prefix": "JSTS",
+        "generator": "jsts",
     },
 }
 

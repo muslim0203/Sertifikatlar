@@ -7,7 +7,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 # Config
-from config import TEMPLATE_FILENAME, TEMPLATE_ICSSHR, TEMPLATE_VEL, OUTPUT_DIR
+from config import TEMPLATE_FILENAME, TEMPLATE_ICSSHR, TEMPLATE_VEL, TEMPLATE_JSTS, OUTPUT_DIR
 
 
 def register_author_font():
@@ -379,13 +379,71 @@ def generate_certificate_vel(author_name, article_title, publication_date, cert_
     c.setFillColor(navy)
     c.drawCentredString(date_center_x, date_y, publication_date)
 
-    # 4. Certificate ID (yoki DOI) — pastda, kichik, xira
-    id_y = 20
-    c.setFont("Helvetica", 8)
-    c.setFillColor(Color(0, 0, 0, alpha=0.5))
-    display_id = f"DOI: {doi}" if doi else f"Certificate ID: {cert_id}"
-    c.drawCentredString(center_x, id_y, display_id)
-    c.setFillColor(black)
+    # Eslatma: Certificate ID raqami foydalanuvchi so'roviga ko'ra olib tashlandi.
+
+    c.save()
+    return output_path
+
+
+def generate_certificate_jsts(author_name, article_title, publication_date, cert_id, doi=None):
+    """
+    Journal of Social and Theological Studies (JSTS) uchun PDF sertifikat (template_jsts.png).
+    Shablonda minnatdorchilik matni va "published in ..." oldindan bosilgan;
+    bu funksiya faqat MUALLIF ISMI, MAQOLA NOMI va SANA ni joylashtiradi (Certificate ID yo'q).
+    """
+    project_dir = os.path.dirname(os.path.abspath(__file__)) or "."
+    template_path = os.path.join(project_dir, TEMPLATE_JSTS)
+    if not os.path.exists(template_path):
+        raise FileNotFoundError(
+            f"Template image {template_path} not found. "
+            f"'{TEMPLATE_JSTS}' faylini loyiha papkasiga joylashtiring."
+        )
+
+    font_name_author = register_author_font()
+
+    safe_author = "".join([c for c in author_name if c.isalnum() or c in (' ', '-', '_')]).strip().replace(' ', '_')
+    if len(safe_author) > 50:
+        safe_author = safe_author[:50]
+    pdf_filename = f"certificate_{safe_author}_{cert_id}.pdf"
+    output_path = os.path.join(OUTPUT_DIR, pdf_filename)
+
+    page_width, page_height = landscape(A4)
+    c = canvas.Canvas(output_path, pagesize=landscape(A4))
+    c.drawImage(template_path, 0, 0, width=page_width, height=page_height, mask='auto')
+
+    center_x = page_width / 2
+    navy = Color(0.07, 0.13, 0.40)
+
+    # 1. Muallif ismi — "PRESENTED TO:" bilan minnatdorchilik matni orasida
+    author_display = author_display_name(author_name)
+    draw_centered_field(
+        c, author_display, center_x, page_height * 0.648,
+        max_width=page_width * 0.70,
+        initial_font_size=32,
+        font_name=font_name_author,
+        max_lines=1, min_font_size=18, fill_color=navy,
+    )
+
+    # 2. Maqola nomi — minnatdorchilik matni va "published in ..." orasida, markazda
+    title_font_name = "Helvetica-Bold"
+    title_lines = get_lines_by_char_limit(article_title, max_chars_per_line=52)[:3]
+    title_font_size = 14
+    c.setFont(title_font_name, title_font_size)
+    c.setFillColor(navy)
+    line_height = title_font_size * 1.4
+    title_center_y = page_height * 0.452
+    total_height = len(title_lines) * line_height
+    start_y = title_center_y + (total_height / 2) - line_height * 0.8
+    for i, line in enumerate(title_lines):
+        tw = c.stringWidth(line, title_font_name, title_font_size)
+        c.drawString(center_x - tw / 2, start_y - i * line_height, line)
+
+    # 3. Sana — pastda o'ngda "Date" chizig'i ustida (markazi x=0.718)
+    date_center_x = page_width * 0.718
+    date_y = page_height * 0.225
+    c.setFont("Helvetica-Bold", 13)
+    c.setFillColor(navy)
+    c.drawCentredString(date_center_x, date_y, publication_date)
 
     c.save()
     return output_path

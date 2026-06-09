@@ -15,6 +15,7 @@ from certificate_generator import (
     generate_certificate,
     generate_certificate_icsshr,
     generate_certificate_vel,
+    generate_certificate_jsts,
 )
 
 # Configure logging
@@ -34,7 +35,8 @@ async def cmd_start(message: types.Message):
     await message.reply(
         "Welcome! Send me an article link from mijournals.com — supported journals:\n"
         "• Human Studies (/Human_Studies/) — Journal & Conference (ICSSHR)\n"
-        "• Virginia EduLab (/vel/)\n\n"
+        "• Virginia EduLab (/vel/)\n"
+        "• Journal of Social and Theological Studies (/jsts/)\n\n"
         "I will detect the journal automatically and send the matching certificate for each author."
     )
 
@@ -109,6 +111,10 @@ async def process_url(message: types.Message):
             cert_prefix = journal_conf.get("prefix", "VEL")
             generate_fn = generate_certificate_vel
             cert_type = f"Journal ({journal_conf.get('name', 'Virginia EduLab')})"
+        elif journal_key == "jsts":
+            cert_prefix = journal_conf.get("prefix", "JSTS")
+            generate_fn = generate_certificate_jsts
+            cert_type = f"Journal ({journal_conf.get('name', 'Journal of Social and Theological Studies')})"
         else:
             # Human Studies (default jurnal) yoki boshqa
             cert_prefix = journal_conf.get("prefix", "MIHS")
