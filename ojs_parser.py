@@ -110,6 +110,10 @@ def extract_metadata(url: str):
     doi_meta = soup.find('meta', attrs={'name': 'citation_doi'})
     doi = doi_meta['content'].strip() if doi_meta and doi_meta.get('content') else None
 
+    # citation_pdf_url — maqolaning PDF faylini yuklab olish havolasi
+    pdf_meta = soup.find('meta', attrs={'name': 'citation_pdf_url'})
+    pdf_url = pdf_meta['content'].strip() if pdf_meta and pdf_meta.get('content') else None
+
     # Section: jurnal yoki konferensiya — sertifikat shabloni va ID prefiksi uchun
     section_name = None
     # OJS da odatda <dt>Section</dt><dd>...</dd> yoki label + span
@@ -137,7 +141,49 @@ def extract_metadata(url: str):
         'authors': authors,
         'date': publication_date_str,
         'doi': doi,
+        'pdf_url': pdf_url,
         'section': section_name or '',
         'is_conference': is_conference,
         'journal_key': detect_journal_key(url),
     }
+
+
+def download_article_pdf(pdf_url, out_dir, fallback_name="article"):
+    """
+    Maqola PDF faylini yuklab oladi va lokal yo'lni qaytaradi (xato bo'lsa None).
+    Fayl nomini serverning Content-Disposition sarlavhasidan oladi, bo'lmasa fallback_name.
+    """
+    if not pdf_url:
+        return None
+    import os
+    import re
+    try:
+        resp = requests.get(pdf_url, timeout=20, stream=True)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        logger.error(f"Error downloading article PDF {pdf_url}: {e}")
+        return None
+
+    # Fayl nomini aniqlash
+    filename = None
+    cd = resp.headers.get("Content-Disposition", "")
+    m = re.search(r'filename\*?=(?:UTF-8\'\')?"?([^";]+)"?', cd)
+    if m:
+        filename = m.group(1).strip()
+    if not filename:
+        filename = f"{fallback_name}.pdf"
+    # Xavfsiz nom
+    filename = re.sub(r'[^A-Za-z0-9._-]', '_', filename)
+    if not filename.lower().endswith(".pdf"):
+        filename += ".pdf"
+
+    out_path = os.path.join(out_dir, filename)
+    try:
+        with open(out_path, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+    except Exception as e:
+        logger.error(f"Error saving article PDF: {e}")
+        return None
+    return out_path

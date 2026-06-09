@@ -5,12 +5,12 @@ import sys
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, Command
-from aiogram.types import FSInputFile
+from aiogram.types import FSInputFile, InputMediaDocument
 from aiogram.enums import ParseMode
 
-from config import BOT_TOKEN, ADMIN_IDS, JOURNALS, CONFERENCE_PREFIX
+from config import BOT_TOKEN, ADMIN_IDS, JOURNALS, CONFERENCE_PREFIX, OUTPUT_DIR
 from db import init_db, get_next_certificate_id, save_certificate
-from ojs_parser import validate_url, extract_metadata
+from ojs_parser import validate_url, extract_metadata, download_article_pdf
 from certificate_generator import (
     generate_certificate,
     generate_certificate_icsshr,
@@ -134,9 +134,37 @@ async def process_url(message: types.Message):
             pdf_path = generate_fn(author, title, date, cert_id, doi=doi)
             generated_files.append((author, pdf_path))
 
-        for author, pdf_path in generated_files:
-            file_to_send = FSInputFile(pdf_path)
-            await message.reply_document(file_to_send, caption=f"Certificate for {author} ({cert_type})")
+        # 4. Maqola PDF faylini yuklab olish (barcha jurnallar uchun)
+        article_pdf_path = download_article_pdf(
+            metadata.get('pdf_url'), OUTPUT_DIR, fallback_name="article"
+        )
+
+        # 5. Ma'lumot matni (rasmidagidek): sarlavha, mualliflar, tur, havola
+        info_caption = (
+            f"Found: {title}\n"
+            f"Authors: {', '.join(authors)}\n"
+            f"Type: {cert_type}\n"
+            f"{url}"
+        )
+
+        # 6. Sertifikat(lar) + maqola faylini bitta guruh (albom) qilib yuborish.
+        #    Caption faqat birinchi elementga beriladi (Telegram uni butun guruhga ko'rsatadi).
+        file_paths = [pdf_path for _, pdf_path in generated_files]
+        if article_pdf_path:
+            file_paths.append(article_pdf_path)
+
+        media = []
+        for i, fp in enumerate(file_paths):
+            if i == 0:
+                media.append(InputMediaDocument(media=FSInputFile(fp), caption=info_caption))
+            else:
+                media.append(InputMediaDocument(media=FSInputFile(fp)))
+
+        if len(media) >= 2:
+            await message.reply_media_group(media=media)
+        elif len(media) == 1:
+            # Bitta fayl bo'lsa media group ishlamaydi — alohida yuboramiz
+            await message.reply_document(FSInputFile(file_paths[0]), caption=info_caption)
 
     except Exception as e:
         logger.exception("process_url error")
