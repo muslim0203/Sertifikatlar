@@ -322,36 +322,59 @@ def generate_certificate_vel(author_name, article_title, publication_date, cert_
     c.drawImage(template_path, 0, 0, width=page_width, height=page_height, mask='auto')
 
     center_x = page_width / 2
-    navy = Color(0.05, 0.12, 0.35)  # to'q ko'k (seal/imzo rangiga yaqin)
-    green = Color(0.0, 0.32, 0.18)  # jurnal yashil rangi
+    navy = Color(0.05, 0.12, 0.35)   # to'q ko'k (seal/imzo rangiga yaqin)
+    green = Color(0.0, 0.32, 0.18)   # jurnal yashil rangi
+    gray = Color(0.20, 0.20, 0.20)   # matn (recognition) rangi
+
+    def draw_block(text, center_y_ratio, font_name, font_size, color,
+                   char_limit=60, max_lines=3, leading=1.35):
+        """Markazlangan ko'p qatorli matn blokini chizadi (center_y_ratio — pastdan nisbat)."""
+        lines = get_lines_by_char_limit(text, max_chars_per_line=char_limit)[:max_lines]
+        c.setFont(font_name, font_size)
+        c.setFillColor(color)
+        line_height = font_size * leading
+        center_y = page_height * center_y_ratio
+        total_height = len(lines) * line_height
+        start_y = center_y + (total_height / 2) - line_height * 0.8
+        for i, line in enumerate(lines):
+            tw = c.stringWidth(line, font_name, font_size)
+            c.drawString(center_x - tw / 2, start_y - i * line_height, line)
 
     # 1. Muallif ismi — "AWARDED TO" lentasi bilan chiziq orasida, markazda
     author_display = author_display_name(author_name)
     draw_centered_field(
-        c, author_display, center_x, page_height * 0.455,
+        c, author_display, center_x, page_height * 0.45,
         max_width=page_width * 0.72,
-        initial_font_size=34,
+        initial_font_size=32,
         font_name=font_name_author,
         max_lines=1, min_font_size=18, fill_color=navy,
     )
 
-    # 2. Maqola sarlavhasi — muallif chizig'idan pastda, markazda
-    title_font_name = "Helvetica-Bold"
-    title_lines = get_lines_by_char_limit(article_title, max_chars_per_line=58)[:4]
-    title_font_size = 15
-    c.setFont(title_font_name, title_font_size)
-    c.setFillColor(green)
-    line_height = title_font_size * 1.4
-    title_center_y = page_height * 0.31
-    total_height = len(title_lines) * line_height
-    start_y = title_center_y + (total_height / 2) - line_height * 0.8
-    for i, line in enumerate(title_lines):
-        tw = c.stringWidth(line, title_font_name, title_font_size)
-        c.drawString(center_x - tw / 2, start_y - i * line_height, line)
+    # 2. Minnatdorchilik matni — ism (chiziq) ostida
+    draw_block(
+        "In recognition of your valuable contribution to academic research "
+        "through the submission of your article",
+        center_y_ratio=0.375, font_name="Helvetica-Oblique", font_size=11,
+        color=gray, char_limit=64, max_lines=2,
+    )
 
-    # 3. Sana — pastda chapda, "DATE" yozuvi ustidagi chiziqda, markazlangan
-    date_center_x = page_width * 0.29
-    date_y = page_height * 0.135
+    # 3. Maqola sarlavhasi — markazda, yashil, qalin
+    draw_block(
+        article_title,
+        center_y_ratio=0.30, font_name="Helvetica-Bold", font_size=13.5,
+        color=green, char_limit=56, max_lines=2,
+    )
+
+    # 4. "published in Virginia EduLab" — sarlavhadan pastda (muhr ustida)
+    draw_block(
+        "published in Virginia EduLab",
+        center_y_ratio=0.252, font_name="Helvetica-Oblique", font_size=11.5,
+        color=navy, char_limit=60, max_lines=1,
+    )
+
+    # 5. Sana — "DATE" yozuvi ustidagi chiziqqa moslangan (markazi x=0.320)
+    date_center_x = page_width * 0.320
+    date_y = page_height * 0.142
     c.setFont("Helvetica-Bold", 14)
     c.setFillColor(navy)
     c.drawCentredString(date_center_x, date_y, publication_date)
