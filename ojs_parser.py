@@ -4,29 +4,34 @@ from urllib.parse import urlparse
 import datetime
 import logging
 
+from config import JOURNALS
+
 logger = logging.getLogger(__name__)
 
 # Constants
 REQUIRED_DOMAIN = "mijournals.com"
-REQUIRED_PATH_SUBSTRING = "/Human_Studies/article/view/"
 
 # Konferensiya bo'limi nomi — shu bo'lsa template_human_studies2 (ICSSHR) ishlatiladi
 CONFERENCE_SECTION_NAME = "International Conference on Social Sciences and Humanities Research"
 
-def validate_url(url: str) -> bool:
-    """Checks if the URL is from mijournals.com and contains the specific path."""
+
+def detect_journal_key(url: str):
+    """
+    URL qaysi jurnalga tegishli ekanini aniqlaydi (config.JOURNALS bo'yicha).
+    Topilsa jurnal kalitini ("human_studies", "vel", ...), aks holda None qaytaradi.
+    """
     parsed = urlparse(url)
-    if not parsed.netloc:
-        return False
-    
-    # Check domain (e.g. mijournals.com or www.mijournals.com)
-    if REQUIRED_DOMAIN not in parsed.netloc:
-        return False
-        
-    if REQUIRED_PATH_SUBSTRING not in parsed.path:
-        return False
-        
-    return True
+    if not parsed.netloc or REQUIRED_DOMAIN not in parsed.netloc:
+        return None
+    for key, conf in JOURNALS.items():
+        if conf["path"] in parsed.path:
+            return key
+    return None
+
+
+def validate_url(url: str) -> bool:
+    """Checks if the URL is from mijournals.com and matches a known journal path."""
+    return detect_journal_key(url) is not None
 
 def extract_metadata(url: str):
     """
@@ -61,8 +66,9 @@ def extract_metadata(url: str):
         return None
     authors = [meta['content'].strip() for meta in authors_meta]
 
-    # citation_publication_date
-    date_meta = soup.find('meta', attrs={'name': 'citation_publication_date'})
+    # citation_publication_date (ba'zi jurnallarda citation_date)
+    date_meta = soup.find('meta', attrs={'name': 'citation_publication_date'}) \
+        or soup.find('meta', attrs={'name': 'citation_date'})
     publication_date_str = ""
     
     if date_meta:
@@ -133,4 +139,5 @@ def extract_metadata(url: str):
         'doi': doi,
         'section': section_name or '',
         'is_conference': is_conference,
+        'journal_key': detect_journal_key(url),
     }

@@ -8,10 +8,14 @@ from aiogram.filters import CommandStart, Command
 from aiogram.types import FSInputFile
 from aiogram.enums import ParseMode
 
-from config import BOT_TOKEN, ADMIN_IDS
+from config import BOT_TOKEN, ADMIN_IDS, JOURNALS, CONFERENCE_PREFIX
 from db import init_db, get_next_certificate_id, save_certificate
 from ojs_parser import validate_url, extract_metadata
-from certificate_generator import generate_certificate, generate_certificate_icsshr
+from certificate_generator import (
+    generate_certificate,
+    generate_certificate_icsshr,
+    generate_certificate_vel,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -28,8 +32,10 @@ if not BOT_TOKEN:
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
     await message.reply(
-        "Welcome! Send me an article link from mijournals.com/Human_Studies/ — "
-        "I will detect whether it is a Journal or Conference article and send the matching certificate for each author."
+        "Welcome! Send me an article link from mijournals.com — supported journals:\n"
+        "• Human Studies (/Human_Studies/) — Journal & Conference (ICSSHR)\n"
+        "• Virginia EduLab (/vel/)\n\n"
+        "I will detect the journal automatically and send the matching certificate for each author."
     )
 
 @dp.message(Command("ping"))
@@ -41,9 +47,11 @@ async def cmd_ping(message: types.Message):
 async def cmd_help(message: types.Message):
     await message.reply(
         "Send an article URL, e.g.:\n"
-        "https://mijournals.com/Human_Studies/article/view/90\n\n"
-        "• Journal articles → Journal certificate (1st template).\n"
-        "• Conference articles (International Conference on Social Sciences and Humanities Research) → Conference certificate (2nd template)."
+        "https://mijournals.com/Human_Studies/article/view/90\n"
+        "https://mijournals.com/vel/article/view/240\n\n"
+        "• Human Studies article → Human Studies certificate.\n"
+        "• Conference (ICSSHR) article → Conference certificate.\n"
+        "• Virginia EduLab article → Virginia EduLab certificate."
     )
 
 @dp.message(F.text)
@@ -88,7 +96,24 @@ async def process_url(message: types.Message):
         date = metadata.get('date', '')
         doi = metadata.get('doi')
         is_conference = metadata.get('is_conference', False)
-        cert_type = "Conference (ICSSHR)" if is_conference else "Journal (Human Studies)"
+        journal_key = metadata.get('journal_key')
+        journal_conf = JOURNALS.get(journal_key, {})
+
+        # Qaysi sertifikat generatori, prefiks va nom ishlatiladi
+        if is_conference:
+            # Human Studies ichidagi konferensiya bo'limi (ICSSHR)
+            cert_prefix = CONFERENCE_PREFIX
+            generate_fn = generate_certificate_icsshr
+            cert_type = "Conference (ICSSHR)"
+        elif journal_key == "vel":
+            cert_prefix = journal_conf.get("prefix", "VEL")
+            generate_fn = generate_certificate_vel
+            cert_type = f"Journal ({journal_conf.get('name', 'Virginia EduLab')})"
+        else:
+            # Human Studies (default jurnal) yoki boshqa
+            cert_prefix = journal_conf.get("prefix", "MIHS")
+            generate_fn = generate_certificate
+            cert_type = f"Journal ({journal_conf.get('name', 'Human Studies')})"
 
         await (status_msg.edit_text if status_msg else message.reply)(
             f"Found: {title}\nAuthors: {', '.join(authors)}\nType: {cert_type}\nGenerating certificates..."
@@ -96,8 +121,6 @@ async def process_url(message: types.Message):
 
         # 3. Generate Certificates
         generated_files = []
-        cert_prefix = "ICSSHR" if is_conference else "MIHS"
-        generate_fn = generate_certificate_icsshr if is_conference else generate_certificate
 
         for author in authors:
             cert_id = get_next_certificate_id(prefix=cert_prefix)

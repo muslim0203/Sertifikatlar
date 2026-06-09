@@ -7,7 +7,30 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 # Config
-from config import TEMPLATE_FILENAME, TEMPLATE_ICSSHR, OUTPUT_DIR
+from config import TEMPLATE_FILENAME, TEMPLATE_ICSSHR, TEMPLATE_VEL, OUTPUT_DIR
+
+
+def register_author_font():
+    """Corsiva (qo'lyozma) shriftini ro'yxatdan o'tkazadi, topilmasa Helvetica-Bold qaytaradi."""
+    project_dir = os.path.dirname(os.path.abspath(__file__)) or "."
+    if "Corsiva" in pdfmetrics.getRegisteredFontNames():
+        return "Corsiva"
+    corsiva_paths = [
+        os.path.join(project_dir, "CORSIVA_BOLD_ITALIC.TTF"),
+        os.path.join(project_dir, "CORSIVA_BOLD_ITALIC.ttf"),
+        os.path.join(project_dir, "unicode.corsiva.ttf"),
+        r"C:\Windows\Fonts\CORSIVA_BOLD_ITALIC.ttf",
+        r"C:\Windows\Fonts\CORSIVA_BOLD_ITALIC.otf",
+    ]
+    for path in corsiva_paths:
+        if path and os.path.exists(path):
+            try:
+                pdfmetrics.registerFont(TTFont("Corsiva", path))
+                return "Corsiva"
+            except Exception:
+                continue
+    print("CORSIVA_BOLD_ITALIC font not found, using Helvetica-Bold for author")
+    return "Helvetica-Bold"
 
 def get_wrapped_lines(text, font_name, font_size, max_width, canvas_obj):
     """
@@ -268,6 +291,81 @@ def generate_certificate_icsshr(author_name, article_title, publication_date, ce
         title_x_ratio=0.5,
         title_y_ratio=0.51,
     )
+
+
+def generate_certificate_vel(author_name, article_title, publication_date, cert_id, doi=None):
+    """
+    Virginia EduLab (VEL) jurnali uchun PDF sertifikat (template_vel.png).
+    Dizayn: yuqorida "THIS CERTIFICATE IS AWARDED TO" lentasi, ostida muallif ismi
+    chiziq ustida, undan pastda maqola sarlavhasi, pastda chapda sana (DATE).
+    """
+    project_dir = os.path.dirname(os.path.abspath(__file__)) or "."
+    template_path = os.path.join(project_dir, TEMPLATE_VEL)
+    if not os.path.exists(template_path):
+        raise FileNotFoundError(
+            f"Template image {template_path} not found. "
+            f"'{TEMPLATE_VEL}' faylini loyiha papkasiga joylashtiring."
+        )
+
+    font_name_author = register_author_font()
+
+    # Output filename
+    safe_author = "".join([c for c in author_name if c.isalnum() or c in (' ', '-', '_')]).strip().replace(' ', '_')
+    if len(safe_author) > 50:
+        safe_author = safe_author[:50]
+    pdf_filename = f"certificate_{safe_author}_{cert_id}.pdf"
+    output_path = os.path.join(OUTPUT_DIR, pdf_filename)
+
+    # Canvas — A4 Landscape
+    page_width, page_height = landscape(A4)
+    c = canvas.Canvas(output_path, pagesize=landscape(A4))
+    c.drawImage(template_path, 0, 0, width=page_width, height=page_height, mask='auto')
+
+    center_x = page_width / 2
+    navy = Color(0.05, 0.12, 0.35)  # to'q ko'k (seal/imzo rangiga yaqin)
+    green = Color(0.0, 0.32, 0.18)  # jurnal yashil rangi
+
+    # 1. Muallif ismi — "AWARDED TO" lentasi bilan chiziq orasida, markazda
+    author_display = author_display_name(author_name)
+    draw_centered_field(
+        c, author_display, center_x, page_height * 0.455,
+        max_width=page_width * 0.72,
+        initial_font_size=34,
+        font_name=font_name_author,
+        max_lines=1, min_font_size=18, fill_color=navy,
+    )
+
+    # 2. Maqola sarlavhasi — muallif chizig'idan pastda, markazda
+    title_font_name = "Helvetica-Bold"
+    title_lines = get_lines_by_char_limit(article_title, max_chars_per_line=58)[:4]
+    title_font_size = 15
+    c.setFont(title_font_name, title_font_size)
+    c.setFillColor(green)
+    line_height = title_font_size * 1.4
+    title_center_y = page_height * 0.31
+    total_height = len(title_lines) * line_height
+    start_y = title_center_y + (total_height / 2) - line_height * 0.8
+    for i, line in enumerate(title_lines):
+        tw = c.stringWidth(line, title_font_name, title_font_size)
+        c.drawString(center_x - tw / 2, start_y - i * line_height, line)
+
+    # 3. Sana — pastda chapda, "DATE" yozuvi ustidagi chiziqda, markazlangan
+    date_center_x = page_width * 0.29
+    date_y = page_height * 0.135
+    c.setFont("Helvetica-Bold", 14)
+    c.setFillColor(navy)
+    c.drawCentredString(date_center_x, date_y, publication_date)
+
+    # 4. Certificate ID (yoki DOI) — pastda, kichik, xira
+    id_y = 20
+    c.setFont("Helvetica", 8)
+    c.setFillColor(Color(0, 0, 0, alpha=0.5))
+    display_id = f"DOI: {doi}" if doi else f"Certificate ID: {cert_id}"
+    c.drawCentredString(center_x, id_y, display_id)
+    c.setFillColor(black)
+
+    c.save()
+    return output_path
 
 
 if __name__ == "__main__":
