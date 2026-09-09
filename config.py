@@ -26,6 +26,8 @@ TEMPLATE_ICSSHR = "template_human_studies2.png"
 TEMPLATE_VEL = "template_vel.png"
 # Journal of Social and Theological Studies
 TEMPLATE_JSTS = "template_jsts.png"
+# Suomi Global Education and Leadership Conference
+TEMPLATE_SGELC = "template_sgelc.png"
 
 # =====================================================================
 # JURNALLAR RO'YXATI
@@ -55,6 +57,12 @@ JOURNALS = {
         "name": "Journal of Social and Theological Studies",
         "prefix": "JSTS",
         "generator": "jsts",
+    },
+    "sgelc": {
+        "path": "/sgelc/article/view/",
+        "name": "Suomi Global Education and Leadership Conference",
+        "prefix": "SGELC",
+        "generator": "sgelc",
     },
 }
 

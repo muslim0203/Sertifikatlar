@@ -7,7 +7,9 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 # Config
-from config import TEMPLATE_FILENAME, TEMPLATE_ICSSHR, TEMPLATE_VEL, TEMPLATE_JSTS, OUTPUT_DIR
+from config import (
+    TEMPLATE_FILENAME, TEMPLATE_ICSSHR, TEMPLATE_VEL, TEMPLATE_JSTS, TEMPLATE_SGELC, OUTPUT_DIR,
+)
 
 
 def register_author_font():
@@ -31,6 +33,79 @@ def register_author_font():
                 continue
     print("CORSIVA_BOLD_ITALIC font not found, using Helvetica-Bold for author")
     return "Helvetica-Bold"
+
+
+def register_ttf_font(font_name, *filenames):
+    """
+    Loyiha papkasidagi TTF shriftni ro'yxatdan o'tkazadi.
+    Muvaffaqiyatli bo'lsa font_name, aks holda None qaytaradi.
+    """
+    if font_name in pdfmetrics.getRegisteredFontNames():
+        return font_name
+    project_dir = os.path.dirname(os.path.abspath(__file__)) or "."
+    for filename in filenames:
+        path = filename if os.path.isabs(filename) else os.path.join(project_dir, filename)
+        if os.path.exists(path):
+            try:
+                pdfmetrics.registerFont(TTFont(font_name, path))
+                return font_name
+            except Exception:
+                continue
+    return None
+
+
+SMALL_WORDS = {
+    "a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "into", "nor",
+    "of", "on", "onto", "or", "per", "the", "to", "via", "with", "over", "under",
+}
+
+
+def smart_title_case(text):
+    """
+    OJS da sarlavhalar ko'pincha BOSH HARFLAR bilan yoziladi. Sertifikatda esa
+    oddiy Title Case ko'rinishi kerak ("Educational and Methodological Foundations...").
+    Matn asosan katta harfda bo'lsagina o'zgartiradi, aks holda tegmaydi.
+    """
+    letters = [ch for ch in text if ch.isalpha()]
+    if not letters:
+        return text
+    upper_ratio = sum(1 for ch in letters if ch.isupper()) / len(letters)
+    if upper_ratio < 0.7:
+        return text  # allaqachon normal yozilgan — tegmaymiz
+
+    words = text.split()
+    result = []
+    for i, word in enumerate(words):
+        lower = word.lower()
+        core = lower.strip(".,:;!?()[]\"'")
+        if i != 0 and i != len(words) - 1 and core in SMALL_WORDS:
+            result.append(lower)
+        else:
+            result.append(author_display_name(lower))
+    return " ".join(result)
+
+
+def draw_line_centered(c, text, center_x, baseline_y, font_name, font_size, color, bold_stroke=0.0):
+    """
+    Bitta qatorni markazlab chizadi. bold_stroke > 0 bo'lsa "faux bold"
+    (Alice kabi qalin variantsiz shriftlar uchun) — matn konturi ham chiziladi.
+    """
+    c.setFont(font_name, font_size)
+    c.setFillColor(color)
+    text_width = c.stringWidth(text, font_name, font_size)
+    x = center_x - text_width / 2
+    if bold_stroke > 0:
+        c.setStrokeColor(color)
+        c.setLineWidth(bold_stroke)
+        t = c.beginText(x, baseline_y)
+        t.setFont(font_name, font_size)
+        t.setTextRenderMode(2)  # fill + stroke
+        t.textLine(text)
+        c.drawText(t)
+        c.setLineWidth(1)
+    else:
+        c.drawString(x, baseline_y, text)
+
 
 def get_wrapped_lines(text, font_name, font_size, max_width, canvas_obj):
     """
@@ -449,6 +524,96 @@ def generate_certificate_jsts(author_name, article_title, publication_date, cert
     return output_path
 
 
+
+# ---------------------------------------------------------------------------
+# Suomi Global Education and Leadership Conference (SGELC)
+# ---------------------------------------------------------------------------
+# Shablon o'lchamlari asl Canva PDF dan olingan (842.25 x 595.5 pt).
+# Barcha koordinatalar shu sahifaga nisbatan, generatorda A4 landscape ga
+# proporsional moslanadi. y — PDF odati bo'yicha PASTDAN hisoblanadi.
+SGELC_SRC_W, SGELC_SRC_H = 842.25, 595.5
+SGELC_CENTER_X = 450.2          # shablon dizayni markazi (sahifa markazi emas!)
+SGELC_NAME_BASELINE = 355.9     # muallif ismi bazaviy chizig'i
+SGELC_NAME_SIZE = 57.0
+SGELC_TITLE_CENTER = 274.1      # sarlavha bloki markazi ("In recognition" va "published in" orasida)
+SGELC_TITLE_SIZE = 14.93
+SGELC_TITLE_LEADING = 20.9
+SGELC_TITLE_MAX_WIDTH = 480.0
+SGELC_DATE_CENTER_X = 611.9     # "Date" chizig'i markazi
+SGELC_DATE_BASELINE = 182.3
+SGELC_DATE_SIZE = 13.5
+
+
+def generate_certificate_sgelc(author_name, article_title, publication_date, cert_id, doi=None):
+    """
+    Suomi Global Education and Leadership Conference (mijournals.com/sgelc/) uchun
+    "Certificate of Appreciation" (template_sgelc.png).
+
+    Shablonda barcha doimiy matn (CERTIFICATE OF APPRECIATION, minnatdorchilik matni,
+    "published in the proceedings of the ...", imzo va "Date" chizig'i) bosilgan.
+    Bu funksiya faqat MUALLIF ISMI, MAQOLA NOMI va SANA ni joylashtiradi
+    (Certificate ID / DOI chop etilmaydi — namunadagi kabi).
+    """
+    project_dir = os.path.dirname(os.path.abspath(__file__)) or "."
+    template_path = os.path.join(project_dir, TEMPLATE_SGELC)
+    if not os.path.exists(template_path):
+        raise FileNotFoundError(
+            f"Template image {template_path} not found. "
+            f"'{TEMPLATE_SGELC}' faylini loyiha papkasiga joylashtiring."
+        )
+
+    # Shriftlar: ism — Niconne (qo'lyozma), sarlavha/sana — Alice (serif)
+    font_name = register_ttf_font("Niconne", "Niconne-Regular.ttf") or "Helvetica-BoldOblique"
+    font_text = register_ttf_font("Alice", "Alice-Regular.ttf") or "Times-Roman"
+
+    safe_author = "".join([c for c in author_name if c.isalnum() or c in (' ', '-', '_')]).strip().replace(' ', '_')
+    if len(safe_author) > 50:
+        safe_author = safe_author[:50]
+    pdf_filename = f"certificate_{safe_author}_{cert_id}.pdf"
+    output_path = os.path.join(OUTPUT_DIR, pdf_filename)
+
+    page_width, page_height = landscape(A4)
+    c = canvas.Canvas(output_path, pagesize=landscape(A4))
+    c.drawImage(template_path, 0, 0, width=page_width, height=page_height, mask='auto')
+
+    # Shablon koordinatalarini haqiqiy sahifaga moslash
+    sx = page_width / SGELC_SRC_W
+    sy = page_height / SGELC_SRC_H
+    navy = Color(6 / 255.0, 43 / 255.0, 99 / 255.0)  # #062B63 — shablondagi matn rangi
+    center_x = SGELC_CENTER_X * sx
+
+    # 1. Muallif ismi — "THIS CERTIFICATE IS PROUDLY PRESENTED TO:" ostida
+    author_display = author_display_name(author_name)
+    name_size = SGELC_NAME_SIZE * sy
+    while name_size > 26 and c.stringWidth(author_display, font_name, name_size) > page_width * 0.70:
+        name_size -= 1
+    draw_line_centered(c, author_display, center_x, SGELC_NAME_BASELINE * sy,
+                       font_name, name_size, navy)
+
+    # 2. Maqola sarlavhasi — qo'shtirnoq ichida, "faux bold", markazlangan blok
+    title_text = '“' + smart_title_case(article_title).strip().strip('"') + '”'
+    title_size = SGELC_TITLE_SIZE * sy
+    max_width = SGELC_TITLE_MAX_WIDTH * sx
+    while True:
+        title_lines = get_wrapped_lines(title_text, font_text, title_size, max_width, c)
+        if len(title_lines) <= 4 or title_size <= 9:
+            break
+        title_size -= 0.5
+    title_lines = title_lines[:4]
+    leading = SGELC_TITLE_LEADING * sy
+    first_baseline = SGELC_TITLE_CENTER * sy + (len(title_lines) - 1) * leading / 2
+    for i, line in enumerate(title_lines):
+        draw_line_centered(c, line, center_x, first_baseline - i * leading,
+                           font_text, title_size, navy, bold_stroke=0.35)
+
+    # 3. Sana — pastda o'ngda, "Date" chizig'i ustida
+    draw_line_centered(c, publication_date, SGELC_DATE_CENTER_X * sx, SGELC_DATE_BASELINE * sy,
+                       font_text, SGELC_DATE_SIZE * sy, navy, bold_stroke=0.3)
+
+    c.save()
+    return output_path
+
+
 if __name__ == "__main__":
     # Test: Human Studies (default template)
     try:
@@ -462,3 +627,13 @@ if __name__ == "__main__":
         print(f"Generated (ICSSHR) at {path2}")
     except Exception as e:
         print(f"Error ICSSHR: {e}")
+    # Test: Suomi Global Education and Leadership Conference
+    try:
+        path3 = generate_certificate_sgelc(
+            "Test Author",
+            "EDUCATIONAL AND METHODOLOGICAL FOUNDATIONS OF DESIGNING A CONFLICTOLOGICAL BLOCK",
+            "August 2026", "SGELC-2026-000001",
+        )
+        print(f"Generated (SGELC) at {path3}")
+    except Exception as e:
+        print(f"Error SGELC: {e}")

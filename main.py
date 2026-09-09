@@ -16,6 +16,7 @@ from certificate_generator import (
     generate_certificate_icsshr,
     generate_certificate_vel,
     generate_certificate_jsts,
+    generate_certificate_sgelc,
 )
 
 # Configure logging
@@ -36,7 +37,8 @@ async def cmd_start(message: types.Message):
         "Welcome! Send me an article link from mijournals.com — supported journals:\n"
         "• Human Studies (/Human_Studies/) — Journal & Conference (ICSSHR)\n"
         "• Virginia EduLab (/vel/)\n"
-        "• Journal of Social and Theological Studies (/jsts/)\n\n"
+        "• Journal of Social and Theological Studies (/jsts/)\n"
+        "• Suomi Global Education and Leadership Conference (/sgelc/)\n\n"
         "I will detect the journal automatically and send the matching certificate for each author."
     )
 
@@ -50,10 +52,12 @@ async def cmd_help(message: types.Message):
     await message.reply(
         "Send an article URL, e.g.:\n"
         "https://mijournals.com/Human_Studies/article/view/90\n"
-        "https://mijournals.com/vel/article/view/240\n\n"
+        "https://mijournals.com/vel/article/view/240\n"
+        "https://mijournals.com/sgelc/article/view/424\n\n"
         "• Human Studies article → Human Studies certificate.\n"
         "• Conference (ICSSHR) article → Conference certificate.\n"
-        "• Virginia EduLab article → Virginia EduLab certificate."
+        "• Virginia EduLab article → Virginia EduLab certificate.\n"
+        "• SGELC article → Suomi Global Education and Leadership Conference certificate."
     )
 
 @dp.message(F.text)
@@ -102,7 +106,12 @@ async def process_url(message: types.Message):
         journal_conf = JOURNALS.get(journal_key, {})
 
         # Qaysi sertifikat generatori, prefiks va nom ishlatiladi
-        if is_conference:
+        if journal_key == "sgelc":
+            # Alohida konferensiya sayti: Suomi Global Education and Leadership Conference
+            cert_prefix = journal_conf.get("prefix", "SGELC")
+            generate_fn = generate_certificate_sgelc
+            cert_type = f"Conference ({journal_conf.get('name', 'Suomi Global Education and Leadership Conference')})"
+        elif is_conference:
             # Human Studies ichidagi konferensiya bo'limi (ICSSHR)
             cert_prefix = CONFERENCE_PREFIX
             generate_fn = generate_certificate_icsshr
