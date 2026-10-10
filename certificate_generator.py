@@ -13,7 +13,7 @@ from config import (
 
 
 def register_author_font():
-    """Corsiva (qo'lyozma) shriftini ro'yxatdan o'tkazadi, topilmasa Helvetica-Bold qaytaradi."""
+    """Corsiva (qo'lyozma) shriftini ro'yxatdan o'tkazadi, topilmasa Montserrat Bold qaytaradi."""
     project_dir = os.path.dirname(os.path.abspath(__file__)) or "."
     if "Corsiva" in pdfmetrics.getRegisteredFontNames():
         return "Corsiva"
@@ -31,8 +31,8 @@ def register_author_font():
                 return "Corsiva"
             except Exception:
                 continue
-    print("CORSIVA_BOLD_ITALIC font not found, using Helvetica-Bold for author")
-    return "Helvetica-Bold"
+    print("CORSIVA_BOLD_ITALIC font not found, using Montserrat Bold for author")
+    return text_font("bold")
 
 
 def register_ttf_font(font_name, *filenames):
@@ -52,6 +52,111 @@ def register_ttf_font(font_name, *filenames):
             except Exception:
                 continue
     return None
+
+
+# ---------------------------------------------------------------------------
+# Unicode shriftlar
+# ---------------------------------------------------------------------------
+# Helvetica/Times kabi PDF ning o'rnatilgan (base-14) shriftlarida ā, ī, ḥ, ḍ, ṭ
+# kabi belgilar yo'q — ular o'rniga qora kvadrat chiqadi. Shuning uchun matnlar
+# loyiha papkasidagi to'liq Unicode shriftlar bilan chiziladi.
+TEXT_FONT_FILES = {
+    "regular": ("MontserratText", "Montserrat-Regular.ttf"),
+    "bold": ("MontserratText-Bold", "Montserrat-Bold.ttf"),
+    "italic": ("MontserratText-Italic", "Montserrat-Italic.ttf"),
+    "serif": ("NotoSerifText", "NotoSerif-Regular.ttf"),
+}
+BASE14_FALLBACK = {
+    "regular": "Helvetica",
+    "bold": "Helvetica-Bold",
+    "italic": "Helvetica-Oblique",
+    "serif": "Times-Roman",
+}
+
+
+def text_font(style="regular"):
+    """Berilgan uslub uchun Unicode shrift nomini qaytaradi (topilmasa base-14)."""
+    font_name, filename = TEXT_FONT_FILES[style]
+    return register_ttf_font(font_name, filename) or BASE14_FALLBACK[style]
+
+
+def fallback_font_for(font_name):
+    """font_name belgini chiza olmaganda ishlatiladigan zaxira shrift."""
+    serif_like = ("Alice", "NotoSerif", "Times")
+    style = "serif" if any(s in font_name for s in serif_like) else "regular"
+    if "Bold" in font_name and style == "regular":
+        style = "bold"
+    fallback = text_font(style)
+    return fallback if fallback != font_name else None
+
+
+def font_supports(font_name, ch):
+    """Shriftda shu belgi uchun glif bormi?"""
+    try:
+        face = pdfmetrics.getFont(font_name).face
+    except Exception:
+        return True
+    char_to_glyph = getattr(face, "charToGlyph", None)
+    if char_to_glyph is None:
+        # base-14 (Type1) shriftlar: faqat Latin-1 belgilarni chiza oladi
+        return ord(ch) < 256
+    return ord(ch) in char_to_glyph
+
+
+def split_font_runs(text, font_name):
+    """
+    Matnni (shrift, bo'lak) juftliklariga ajratadi: asosiy shriftda yo'q belgilar
+    zaxira Unicode shriftda chiziladi, shunda qora kvadrat chiqmaydi.
+    """
+    fallback = fallback_font_for(font_name)
+    runs = []
+    for ch in text:
+        if ch == " " or font_supports(font_name, ch) or fallback is None:
+            font_for_ch = font_name
+        elif font_supports(fallback, ch):
+            font_for_ch = fallback
+        else:
+            font_for_ch = font_name
+        if runs and runs[-1][0] == font_for_ch:
+            runs[-1][1] += ch
+        else:
+            runs.append([font_for_ch, ch])
+    return [(f, s) for f, s in runs]
+
+
+def text_width(c, text, font_name, font_size):
+    """stringWidth — zaxira shriftdagi belgilarni ham hisobga oladi."""
+    return sum(c.stringWidth(s, f, font_size) for f, s in split_font_runs(text, font_name))
+
+
+def draw_text_at(c, x, baseline_y, text, font_name, font_size, bold_stroke=0.0):
+    """Matnni (x, baseline_y) dan boshlab chizadi, zaxira shriftni aralashtirib."""
+    cursor = x
+    for run_font, segment in split_font_runs(text, font_name):
+        if bold_stroke > 0:
+            t = c.beginText(cursor, baseline_y)
+            t.setFont(run_font, font_size)
+            t.setTextRenderMode(2)  # fill + stroke
+            t.textLine(segment)
+            c.setLineWidth(bold_stroke)
+            c.drawText(t)
+            c.setLineWidth(1)
+        else:
+            c.setFont(run_font, font_size)
+            c.drawString(cursor, baseline_y, segment)
+        cursor += c.stringWidth(segment, run_font, font_size)
+
+
+def draw_text_centered(c, text, center_x, baseline_y, font_name, font_size, bold_stroke=0.0):
+    """Matnni center_x ga nisbatan markazlab chizadi."""
+    width = text_width(c, text, font_name, font_size)
+    draw_text_at(c, center_x - width / 2, baseline_y, text, font_name, font_size, bold_stroke)
+
+
+def draw_text_right(c, text, right_x, baseline_y, font_name, font_size):
+    """Matnni o'ng chetini right_x ga tenglab chizadi."""
+    width = text_width(c, text, font_name, font_size)
+    draw_text_at(c, right_x - width, baseline_y, text, font_name, font_size)
 
 
 SMALL_WORDS = {
@@ -92,19 +197,9 @@ def draw_line_centered(c, text, center_x, baseline_y, font_name, font_size, colo
     """
     c.setFont(font_name, font_size)
     c.setFillColor(color)
-    text_width = c.stringWidth(text, font_name, font_size)
-    x = center_x - text_width / 2
     if bold_stroke > 0:
         c.setStrokeColor(color)
-        c.setLineWidth(bold_stroke)
-        t = c.beginText(x, baseline_y)
-        t.setFont(font_name, font_size)
-        t.setTextRenderMode(2)  # fill + stroke
-        t.textLine(text)
-        c.drawText(t)
-        c.setLineWidth(1)
-    else:
-        c.drawString(x, baseline_y, text)
+    draw_text_centered(c, text, center_x, baseline_y, font_name, font_size, bold_stroke)
 
 
 def get_wrapped_lines(text, font_name, font_size, max_width, canvas_obj):
@@ -117,8 +212,8 @@ def get_wrapped_lines(text, font_name, font_size, max_width, canvas_obj):
     
     for word in words:
         test_line = ' '.join(current_line + [word])
-        width = canvas_obj.stringWidth(test_line, font_name, font_size)
-        
+        width = text_width(canvas_obj, test_line, font_name, font_size)
+
         if width <= max_width:
             current_line.append(word)
         else:
@@ -204,11 +299,8 @@ def draw_centered_field(c, text, x_center, y_center, max_width, initial_font_siz
     # 0.8 is roughly ascent/baseline adjustment. Reportlab draws at baseline.
     
     for i, line in enumerate(lines):
-        text_width = c.stringWidth(line, font_name, font_size)
-        x_draw = x_center - (text_width / 2)
-        y_draw = start_y - (i * line_height)
-        c.drawString(x_draw, y_draw, line)
-        
+        draw_text_centered(c, line, x_center, start_y - (i * line_height), font_name, font_size)
+
     return font_size
 
 def generate_certificate(author_name, article_title, publication_date, cert_id, doi=None, template=None, layout_shift_up=0,
@@ -228,7 +320,7 @@ def generate_certificate(author_name, article_title, publication_date, cert_id, 
         template_path = os.path.join(project_dir, template_path)
     
     # Author font: loyiha papkasidagi yoki C:\Windows\Fonts dagi CORSIVA_BOLD_ITALIC
-    font_name_author = "Helvetica-Bold"
+    font_name_author = text_font("bold")
     corsiva_paths = [
         os.path.join(project_dir, "CORSIVA_BOLD_ITALIC.TTF"),
         os.path.join(project_dir, "CORSIVA_BOLD_ITALIC.ttf"),
@@ -249,10 +341,10 @@ def generate_certificate(author_name, article_title, publication_date, cert_id, 
                     except Exception:
                         continue
             if font_name_author != "Corsiva":
-                print("CORSIVA_BOLD_ITALIC font not found, using Helvetica-Bold for author")
+                print("CORSIVA_BOLD_ITALIC font not found, using Montserrat Bold for author")
         except Exception as e:
             print(f"Error registering Corsiva font: {e}")
-            font_name_author = "Helvetica-Bold"
+            font_name_author = text_font("bold")
     
     # 1. Output Filename
     safe_author = "".join([c for c in author_name if c.isalnum() or c in (' ', '-', '_')]).strip().replace(' ', '_')
@@ -295,7 +387,7 @@ def generate_certificate(author_name, article_title, publication_date, cert_id, 
                         
     # Article Title (14 pt, bold, to'q ko'k; 60+ belgi bo'lsa ikkinchi, uchinchi qatorlarga tushadi)
     title_font_size = 14
-    title_font_name = "Helvetica-Bold"
+    title_font_name = text_font("bold")
     if len(article_title) > 60:
         title_lines = get_lines_by_char_limit(article_title, max_chars_per_line=60)
         title_lines = title_lines[:5]  # maksimum 5 qator
@@ -305,8 +397,8 @@ def generate_certificate(author_name, article_title, publication_date, cert_id, 
         total_height = len(title_lines) * line_height
         start_y = title_y + (total_height / 2) - line_height * 0.8
         for i, line in enumerate(title_lines):
-            text_width = c.stringWidth(line, title_font_name, title_font_size)
-            c.drawString(title_x - text_width / 2, start_y - (i * line_height), line)
+            draw_text_centered(c, line, title_x, start_y - (i * line_height),
+                               title_font_name, title_font_size)
     else:
         draw_centered_field(c, article_title, title_x, title_y, 
                             max_width=page_width * 0.7, 
@@ -318,25 +410,22 @@ def generate_certificate(author_name, article_title, publication_date, cert_id, 
     date_y = page_height * (date_y_ratio if date_y_ratio is not None else 0.24)
     if date_x_ratio is not None:
         date_x = center_x - page_width * date_x_ratio  # chapga
-        c.setFont("Helvetica-Bold", 16)
         c.setFillColor(date_red_bold and red or black)
-        c.drawString(date_x, date_y, publication_date)
+        draw_text_at(c, date_x, date_y, publication_date, text_font("bold"), 16)
     else:
         date_x = center_x + page_width * 0.30
-        c.setFont("Helvetica-Oblique", 16)
         c.setFillColor(black)
-        c.drawRightString(date_x, date_y, publication_date)
+        draw_text_right(c, publication_date, date_x, date_y, text_font("italic"), 16)
 
     # DOI (o'ngroq, pastda, prozrachnost); konferensiyada doim maxsus Certificate ID
     id_x = center_x + page_width * 0.37
     id_y = 22
-    c.setFont("Helvetica", 8)
     c.setFillColor(Color(0, 0, 0, alpha=0.5))
     if use_cert_id_only:
         display_id = f"Certificate ID: {cert_id}"
     else:
         display_id = f"DOI: {doi}" if doi else f"Certificate ID: {cert_id}"
-    c.drawCentredString(id_x, id_y, display_id)
+    draw_text_centered(c, display_id, id_x, id_y, text_font("regular"), 8)
     c.setFillColor(black)
     
     c.save()
@@ -412,8 +501,7 @@ def generate_certificate_vel(author_name, article_title, publication_date, cert_
         total_height = len(lines) * line_height
         start_y = center_y + (total_height / 2) - line_height * 0.8
         for i, line in enumerate(lines):
-            tw = c.stringWidth(line, font_name, font_size)
-            c.drawString(center_x - tw / 2, start_y - i * line_height, line)
+            draw_text_centered(c, line, center_x, start_y - i * line_height, font_name, font_size)
 
     # 1. Muallif ismi — "AWARDED TO" lentasi bilan chiziq orasida, markazda
     author_display = author_display_name(author_name)
@@ -429,30 +517,29 @@ def generate_certificate_vel(author_name, article_title, publication_date, cert_
     draw_block(
         "In recognition of your valuable contribution to academic research "
         "through the submission of your article",
-        center_y_ratio=0.375, font_name="Helvetica-Oblique", font_size=11,
+        center_y_ratio=0.375, font_name=text_font("italic"), font_size=11,
         color=gray, char_limit=64, max_lines=2,
     )
 
     # 3. Maqola sarlavhasi — markazda, yashil, qalin
     draw_block(
         article_title,
-        center_y_ratio=0.30, font_name="Helvetica-Bold", font_size=13.5,
+        center_y_ratio=0.30, font_name=text_font("bold"), font_size=13.5,
         color=green, char_limit=56, max_lines=2,
     )
 
     # 4. "published in Virginia EduLab" — sarlavhadan pastda (muhr ustida)
     draw_block(
         "published in Virginia EduLab",
-        center_y_ratio=0.252, font_name="Helvetica-Oblique", font_size=11.5,
+        center_y_ratio=0.252, font_name=text_font("italic"), font_size=11.5,
         color=navy, char_limit=60, max_lines=1,
     )
 
     # 5. Sana — "DATE" yozuvi ustidagi chiziqqa moslangan (markazi x=0.320)
     date_center_x = page_width * 0.320
     date_y = page_height * 0.142
-    c.setFont("Helvetica-Bold", 14)
     c.setFillColor(navy)
-    c.drawCentredString(date_center_x, date_y, publication_date)
+    draw_text_centered(c, publication_date, date_center_x, date_y, text_font("bold"), 14)
 
     # Eslatma: Certificate ID raqami foydalanuvchi so'roviga ko'ra olib tashlandi.
 
@@ -500,7 +587,7 @@ def generate_certificate_jsts(author_name, article_title, publication_date, cert
     )
 
     # 2. Maqola nomi — minnatdorchilik matni va "published in ..." orasida, markazda
-    title_font_name = "Helvetica-Bold"
+    title_font_name = text_font("bold")
     title_lines = get_lines_by_char_limit(article_title, max_chars_per_line=52)[:3]
     title_font_size = 14
     c.setFont(title_font_name, title_font_size)
@@ -510,15 +597,14 @@ def generate_certificate_jsts(author_name, article_title, publication_date, cert
     total_height = len(title_lines) * line_height
     start_y = title_center_y + (total_height / 2) - line_height * 0.8
     for i, line in enumerate(title_lines):
-        tw = c.stringWidth(line, title_font_name, title_font_size)
-        c.drawString(center_x - tw / 2, start_y - i * line_height, line)
+        draw_text_centered(c, line, center_x, start_y - i * line_height,
+                           title_font_name, title_font_size)
 
     # 3. Sana — pastda o'ngda "Date" chizig'i ustida (markazi x=0.718)
     date_center_x = page_width * 0.718
     date_y = page_height * 0.225
-    c.setFont("Helvetica-Bold", 13)
     c.setFillColor(navy)
-    c.drawCentredString(date_center_x, date_y, publication_date)
+    draw_text_centered(c, publication_date, date_center_x, date_y, text_font("bold"), 13)
 
     c.save()
     return output_path
@@ -563,8 +649,8 @@ def generate_certificate_sgelc(author_name, article_title, publication_date, cer
         )
 
     # Shriftlar: ism — Niconne (qo'lyozma), sarlavha/sana — Alice (serif)
-    font_name = register_ttf_font("Niconne", "Niconne-Regular.ttf") or "Helvetica-BoldOblique"
-    font_text = register_ttf_font("Alice", "Alice-Regular.ttf") or "Times-Roman"
+    font_name = register_ttf_font("Niconne", "Niconne-Regular.ttf") or text_font("bold")
+    font_text = register_ttf_font("Alice", "Alice-Regular.ttf") or text_font("serif")
 
     safe_author = "".join([c for c in author_name if c.isalnum() or c in (' ', '-', '_')]).strip().replace(' ', '_')
     if len(safe_author) > 50:
@@ -585,7 +671,7 @@ def generate_certificate_sgelc(author_name, article_title, publication_date, cer
     # 1. Muallif ismi — "THIS CERTIFICATE IS PROUDLY PRESENTED TO:" ostida
     author_display = author_display_name(author_name)
     name_size = SGELC_NAME_SIZE * sy
-    while name_size > 26 and c.stringWidth(author_display, font_name, name_size) > page_width * 0.70:
+    while name_size > 26 and text_width(c, author_display, font_name, name_size) > page_width * 0.70:
         name_size -= 1
     draw_line_centered(c, author_display, center_x, SGELC_NAME_BASELINE * sy,
                        font_name, name_size, navy)
